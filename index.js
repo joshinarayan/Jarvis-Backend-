@@ -1,36 +1,49 @@
 import express from "express";
 import cors from "cors";
-import fetch from "node-fetch";
+import axios from "axios";
 import dotenv from "dotenv";
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.post("/api/ask", async (req, res) => {
-    const prompt = req.body.prompt;
-    if (!prompt) return res.json({ reply: "No prompt received." });
+app.get("/", (req,res)=>{
+    res.send("🚀 JARVIS backend online");
+});
 
+app.post("/api/ask", async (req, res) => {
     try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.OPENROUTER_KEY}`,
-                "Content-Type": "application/json"
+        const userMessage = req.body.message;
+        if (!userMessage) return res.json({ reply: "No input received sir!" });
+
+        const response = await axios.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+                model: "mistral-nemo",
+                messages: [
+                    { role: "system", content: "You are JARVIS. Respond formal, male voice tone." },
+                    { role: "user", content: userMessage }
+                ]
             },
-            body: JSON.stringify({
-                model: "google/gemini-2.0-flash-thinking-exp:free",
-                messages: [{ role: "user", content: prompt }]
-            })
+            {
+                headers: {
+                    "Authorization": `Bearer ${process.env.OPENROUTER_KEY}`,
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        res.json({
+            reply: response.data.choices[0].message.content
         });
 
-        const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "No response from AI.";
-        res.json({ reply });
     } catch (err) {
-        res.json({ reply: "Backend error, check API key or server." });
+        console.log("AI ERROR:", err.response?.data || err.message);
+        res.json({ reply: "System error sir. AI failed to retrieve response." });
     }
 });
 
-app.listen(process.env.PORT || 10000, () => console.log("JARVIS Online Sir."));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, ()=> console.log(`JARVIS running on port ${PORT}`));
