@@ -1,15 +1,17 @@
 {
   "name": "jarvis-backend",
   "version": "1.0.0",
-  "type": "module",
+  "description": "Backend for Jarvis AI mobile assistant",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "axios": "^1.6.0",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "node-fetch": "^3.3.2"
-  }
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2"
+  },
+  "license": "MIT"
 }
