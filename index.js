@@ -24,7 +24,7 @@ app.post("/api/ask", async (req, res) => {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`, // KEY will go in Render env
+                "Authorization": `Bearer ${process.env.OPENROUTER_KEY}`, // KEY will go in Render env
             },
             body: JSON.stringify({
                 model: "gpt-4o-mini", // Or any model you want
