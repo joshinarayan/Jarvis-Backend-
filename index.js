@@ -1,45 +1,41 @@
 import express from "express";
 import axios from "axios";
 import cors from "cors";
-import bodyParser from "body-parser";
 
 const app = express();
+app.use(express.json());
 app.use(cors());
-app.use(bodyParser.json());
 
-const API_KEY = process.env.OPENROUTER_KEY; // must exist in Render
-const MODEL = "mistralai/mistral-tiny"; // supported, cheap, always works
+const API_KEY = process.env.OPENROUTER_API_KEY;
 
 app.post("/api/ask", async (req, res) => {
-    try {
-        const userMsg = req.body.message;
-        if (!userMsg) return res.json({ reply: "No message received." });
+    let prompt = req.body.prompt || req.body.message; // ← accept both
 
+    if (!prompt) return res.json({ reply: "No prompt received ⚠️" });
+
+    try {
         const response = await axios.post(
             "https://openrouter.ai/api/v1/chat/completions",
             {
-                model: MODEL,
-                messages: [{ role: "user", content: userMsg }]
+                model: "openai/gpt-3.5-turbo",           // you can change later
+                messages: [{ role: "user", content: prompt }]
             },
             {
                 headers: {
-                    "Authorization": `Bearer ${API_KEY}`,
-                    "HTTP-Referer": "https://jarvis-frontend.com", // can be blank
-                    "X-Title": "JARVIS-AI"
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${API_KEY}`
                 }
             }
         );
 
-        let reply = response.data.choices[0].message.content.trim();
-        return res.json({ reply });
+        let reply = response.data.choices?.[0]?.message?.content || "No response";
+        res.json({ reply });
 
     } catch (err) {
-        console.log("AI ERROR:", err.response?.data || err.message);
-        return res.json({ reply: "AI connection failed sir." });
+        console.log("AI ERROR:", err.response?.data);
+        res.json({ reply: "AI system temporarily failed sir." });
     }
 });
 
-app.get("/", (req, res) => res.send("JARVIS Backend Online ✔"));
-
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`🟢 JARVIS running on port ${PORT}`));
+app.listen(PORT, () => console.log("🟢 JARVIS Online on port", PORT));
