@@ -1,50 +1,45 @@
 import express from "express";
-import cors from "cors";
 import axios from "axios";
-import dotenv from "dotenv";
-
-dotenv.config();
+import cors from "cors";
+import bodyParser from "body-parser";
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(bodyParser.json());
 
-app.get("/", (req,res)=>{
-    res.send("🚀 JARVIS backend online and operational.");
-});
+const API_KEY = process.env.OPENROUTER_KEY; // must exist in Render
+const MODEL = "mistralai/mistral-tiny"; // supported, cheap, always works
 
 app.post("/api/ask", async (req, res) => {
     try {
-        const userMessage = req.body.message || req.body.prompt; // FIXED HERE
-
-        if (!userMessage) return res.json({ reply: "No prompt received sir!" });
+        const userMsg = req.body.message;
+        if (!userMsg) return res.json({ reply: "No message received." });
 
         const response = await axios.post(
             "https://openrouter.ai/api/v1/chat/completions",
             {
-                model: "mistral-nemo",
-                messages: [
-                    { role: "system", content: "You are JARVIS. Male tone. Intelligent. Formal but badass." },
-                    { role: "user", content: userMessage }
-                ]
+                model: MODEL,
+                messages: [{ role: "user", content: userMsg }]
             },
             {
                 headers: {
-                    "Authorization": `Bearer ${process.env.OPENROUTER_KEY}`,
-                    "Content-Type": "application/json"
+                    "Authorization": `Bearer ${API_KEY}`,
+                    "HTTP-Referer": "https://jarvis-frontend.com", // can be blank
+                    "X-Title": "JARVIS-AI"
                 }
             }
         );
 
-        res.json({
-            reply: response.data.choices[0].message.content.trim()
-        });
+        let reply = response.data.choices[0].message.content.trim();
+        return res.json({ reply });
 
     } catch (err) {
         console.log("AI ERROR:", err.response?.data || err.message);
-        res.json({ reply: "AI system temporarily failed sir." });
+        return res.json({ reply: "AI connection failed sir." });
     }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=> console.log(`🟢 JARVIS running on port ${PORT}`));
+app.get("/", (req, res) => res.send("JARVIS Backend Online ✔"));
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`🟢 JARVIS running on port ${PORT}`));
