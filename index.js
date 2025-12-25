@@ -6,36 +6,33 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-app.post("/api/ask", async (req, res) => {
+app.get("/", (req,res)=>{
+    res.send("Jarvis backend is online 💚");
+});
+
+app.post("/api/ask", async (req,res)=>{
     const userMsg = req.body.message;
 
-    try {
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.OPENROUTER_KEY}`,
-                "Content-Type": "application/json"
+    try{
+        const r = await fetch("https://openrouter.ai/api/v1/chat/completions",{
+            method:"POST",
+            headers:{
+                "Content-Type":"application/json",
+                "Authorization":`Bearer ${process.env.OPENROUTER_KEY}`
             },
-            body: JSON.stringify({
-                model: "mistral/mistral-large-latest",
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are JARVIS — confident AI assistant like Tony Stark. You respond with intelligence, short classy answers. You solve coding requests, general questions, jokes, anything."
-                    },
-                    { role: "user", content: userMsg }
-                ]
+            body:JSON.stringify({
+                model:"gpt-3.5-turbo",
+                messages:[{role:"user",content:userMsg}]
             })
         });
 
-        const data = await response.json();
-        res.json({ reply: data.choices[0].message.content });
+        const data = await r.json();
+        const reply = data.choices?.[0]?.message?.content || "No response sir.";
 
-    } catch (err) {
-        res.json({ reply: "Backend error bro 😭" });
+        res.json({reply});
+    }catch(err){
+        res.json({reply:"Backend error."});
     }
 });
 
-app.get("/", (req,res)=>res.send("Jarvis backend online 🔥"));
-
-app.listen(3000, ()=> console.log("Backend running on 3000"));
+app.listen(3000,()=>console.log("Server live 🔥"));
