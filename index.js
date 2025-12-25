@@ -10,20 +10,21 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/", (req,res)=>{
-    res.send("🚀 JARVIS backend online");
+    res.send("🚀 JARVIS backend online and operational.");
 });
 
 app.post("/api/ask", async (req, res) => {
     try {
-        const userMessage = req.body.message;
-        if (!userMessage) return res.json({ reply: "No input received sir!" });
+        const userMessage = req.body.message || req.body.prompt; // FIXED HERE
+
+        if (!userMessage) return res.json({ reply: "No prompt received sir!" });
 
         const response = await axios.post(
             "https://openrouter.ai/api/v1/chat/completions",
             {
                 model: "mistral-nemo",
                 messages: [
-                    { role: "system", content: "You are JARVIS. Respond formal, male voice tone." },
+                    { role: "system", content: "You are JARVIS. Male tone. Intelligent. Formal but badass." },
                     { role: "user", content: userMessage }
                 ]
             },
@@ -36,14 +37,14 @@ app.post("/api/ask", async (req, res) => {
         );
 
         res.json({
-            reply: response.data.choices[0].message.content
+            reply: response.data.choices[0].message.content.trim()
         });
 
     } catch (err) {
         console.log("AI ERROR:", err.response?.data || err.message);
-        res.json({ reply: "System error sir. AI failed to retrieve response." });
+        res.json({ reply: "AI system temporarily failed sir." });
     }
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=> console.log(`JARVIS running on port ${PORT}`));
+app.listen(PORT, ()=> console.log(`🟢 JARVIS running on port ${PORT}`));
