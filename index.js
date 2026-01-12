@@ -2,95 +2,118 @@ import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
+import crypto from "crypto";
+
 dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-/* ================= PRIVATE CREDENTIALS ================= */
-// CHANGE THESE (ONLY YOU KNOW)
-const JARVIS_USER = process.env.JARVIS_USER || "dream";
-const JARVIS_PASS = process.env.JARVIS_PASS || "ironman123";
+// ================== HARD AUTH ==================
+const MASTER_USER = "Dream";
+const MASTER_PASS_HASH = crypto
+  .createHash("sha256")
+  .update("2024726171")
+  .digest("hex");
 
-/* ================= SIMPLE SESSION ================= */
-let sessionActive = false;
+// ================== FACE STORE ==================
+let MASTER_FACE = null; // Float32Array stored as normal array
 
-app.get("/", (req,res)=> res.send("🟢 Jarvis backend online"));
+// ================== LOGIN ==================
+app.post("/api/login", (req, res) => {
+  const { username, password } = req.body;
+  if (!username || !password)
+    return res.status(400).json({ ok: false });
 
-/* ================= LOGIN ================= */
-app.post("/api/login",(req,res)=>{
-    const { username, password } = req.body;
+  const hash = crypto.createHash("sha256").update(password).digest("hex");
 
-    if(username === JARVIS_USER && password === JARVIS_PASS){
-        sessionActive = true;
-        return res.json({ success:true });
-    }
+  if (username === MASTER_USER && hash === MASTER_PASS_HASH) {
+    return res.json({ ok: true });
+  }
 
-    res.status(401).json({ success:false });
+  return res.status(403).json({ ok: false });
 });
 
-/* ================= AI MEMORY ================= */
+// ================== FACE ENROLL ==================
+app.post("/api/face/enroll", (req, res) => {
+  const { embedding } = req.body;
+  if (!embedding || !Array.isArray(embedding))
+    return res.status(400).json({ ok: false });
+
+  MASTER_FACE = embedding;
+  console.log("✅ MASTER FACE ENROLLED");
+  res.json({ ok: true });
+});
+
+// ================== FACE VERIFY ==================
+app.post("/api/face/verify", (req, res) => {
+  if (!MASTER_FACE) return res.json({ match: false });
+
+  const { embedding } = req.body;
+  if (!embedding) return res.json({ match: false });
+
+  let dot = 0,
+    normA = 0,
+    normB = 0;
+
+  for (let i = 0; i < embedding.length; i++) {
+    dot += embedding[i] * MASTER_FACE[i];
+    normA += embedding[i] ** 2;
+    normB += MASTER_FACE[i] ** 2;
+  }
+
+  const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  res.json({ match: similarity > 0.85 });
+});
+
+// ================== AI ==================
 let memory = [];
 
-/* ================= PROTECTED AI ================= */
-app.post("/api/ask", async(req,res)=>{
-   if(!sessionActive){
-       return res.status(403).json({
-           reply:"Access denied. Authentication required.",
-           action:"none"
-       });
-   }
+app.post("/api/ask", async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt) return res.json({ reply: "No input", action: "none" });
 
-   const prompt = req.body.prompt;
-   if(!prompt) return res.status(400).json({reply:"No prompt received"});
-
-   try{
-       const response = await fetch("https://openrouter.ai/api/v1/chat/completions",{
-           method:"POST",
-           headers:{
-               "Authorization":`Bearer ${process.env.OPENROUTER_API_KEY}`,
-               "Content-Type":"application/json"
-           },
-           body: JSON.stringify({
-               model:"meta-llama/llama-3.1-8b-instruct",
-               messages:[
-                   {
-                       role:"system",
-                       content:`
+  try {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.1-8b-instruct",
+        messages: [
+          {
+            role: "system",
+            content: `
 You are JARVIS.
-Professional, calm, robotic.
-Short, precise replies.
-Address user as "sir".
-No roleplay.
-JSON replies only.
+Male, robotic, calm.
+Always call user "sir".
+Short replies.
+JSON ONLY.
 
-FORMAT:
-{"reply":"","action":"none|open|search","target":""}
-                       `
-                   },
-                   ...memory.slice(-8),
-                   {role:"user",content:prompt}
-               ]
-           })
-       });
+{"reply":"text","action":"none|open|search","target":""}
+`,
+          },
+          ...memory.slice(-6),
+          { role: "user", content: prompt },
+        ],
+      }),
+    });
 
-       const data = await response.json();
-       const content = data?.choices?.[0]?.message?.content || "{}";
+    const data = await r.json();
+    const parsed = JSON.parse(data.choices[0].message.content);
 
-       let parsed;
-       try{ parsed = JSON.parse(content); }
-       catch{ parsed = {reply:content, action:"none"}; }
+    memory.push({ role: "user", content: prompt });
+    memory.push({ role: "assistant", content: parsed.reply });
 
-       memory.push({role:"user",content:prompt});
-       memory.push({role:"assistant",content:parsed.reply});
-
-       res.json(parsed);
-
-   }catch{
-       res.json({reply:"AI system failure.", action:"none"});
-   }
+    res.json(parsed);
+  } catch {
+    res.json({ reply: "AI offline, sir.", action: "none" });
+  }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, ()=> console.log(`JARVIS backend on ${PORT}`));
+app.listen(3000, () =>
+  console.log("🟢 JARVIS BACKEND HARDCORE ONLINE")
+);
