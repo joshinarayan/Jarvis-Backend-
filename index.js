@@ -8,12 +8,40 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req,res)=> res.send("🟢 Jarvis backend online, sir."));
+/* ================= PRIVATE CREDENTIALS ================= */
+// CHANGE THESE (ONLY YOU KNOW)
+const JARVIS_USER = process.env.JARVIS_USER || "dream";
+const JARVIS_PASS = process.env.JARVIS_PASS || "ironman123";
 
-// MEMORY (last 8 interactions)
+/* ================= SIMPLE SESSION ================= */
+let sessionActive = false;
+
+app.get("/", (req,res)=> res.send("🟢 Jarvis backend online"));
+
+/* ================= LOGIN ================= */
+app.post("/api/login",(req,res)=>{
+    const { username, password } = req.body;
+
+    if(username === JARVIS_USER && password === JARVIS_PASS){
+        sessionActive = true;
+        return res.json({ success:true });
+    }
+
+    res.status(401).json({ success:false });
+});
+
+/* ================= AI MEMORY ================= */
 let memory = [];
 
+/* ================= PROTECTED AI ================= */
 app.post("/api/ask", async(req,res)=>{
+   if(!sessionActive){
+       return res.status(403).json({
+           reply:"Access denied. Authentication required.",
+           action:"none"
+       });
+   }
+
    const prompt = req.body.prompt;
    if(!prompt) return res.status(400).json({reply:"No prompt received"});
 
@@ -30,24 +58,18 @@ app.post("/api/ask", async(req,res)=>{
                    {
                        role:"system",
                        content:`
-You are JARVIS. Professional, calm, and robotic deep tone.
-All replies must be short, precise, and address user as "sir".
-You are NOT roleplaying as anyone or any company.
-You may suggest actions as JSON.
+You are JARVIS.
+Professional, calm, robotic.
+Short, precise replies.
+Address user as "sir".
+No roleplay.
+JSON replies only.
 
-REPLY FORMAT STRICTLY as JSON ONLY:
-{"reply":"Your text reply here","action":"none|open|search","target":"URL or search term"}
-
-Rules:
-- "action" can be:
-   - "open" (open a website/app)
-   - "search" (Google search)
-   - "none" (just reply)
-- "target" is optional. If "open" provide full URL, if "search" provide search query.
-- Always reply in JSON even if action is none.
-                   `
+FORMAT:
+{"reply":"","action":"none|open|search","target":""}
+                       `
                    },
-                   ...memory.slice(-8), // last 8 messages for light memory
+                   ...memory.slice(-8),
                    {role:"user",content:prompt}
                ]
            })
@@ -57,21 +79,16 @@ Rules:
        const content = data?.choices?.[0]?.message?.content || "{}";
 
        let parsed;
-       try{
-           parsed = JSON.parse(content);
-       }catch{
-           parsed = {reply:content, action:"none", target:null};
-       }
+       try{ parsed = JSON.parse(content); }
+       catch{ parsed = {reply:content, action:"none"}; }
 
-       // store light memory
        memory.push({role:"user",content:prompt});
        memory.push({role:"assistant",content:parsed.reply});
 
        res.json(parsed);
 
-   }catch(err){
-       console.log(err);
-       res.json({reply:"AI system temporarily failed, sir.", action:"none", target:null});
+   }catch{
+       res.json({reply:"AI system failure.", action:"none"});
    }
 });
 
