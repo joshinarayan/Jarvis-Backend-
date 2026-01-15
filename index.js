@@ -26,7 +26,6 @@ app.post("/api/login", (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) return res.status(400).json({ ok: false });
 
-    // Simple SHA256 Hash Check
     const hash = crypto.createHash("sha256").update(password).digest("hex");
 
     if (username === MASTER_USER && hash === MASTER_PASS_HASH) {
@@ -46,36 +45,31 @@ app.post("/api/face/enroll", (req, res) => {
 app.post("/api/face/verify", (req, res) => {
     if (!MASTER_FACE) return res.json({ match: false });
     const { embedding } = req.body;
-    
-    // Euclidean distance / Similarity Mock
-    // Since we use random numbers in frontend, this is just logic proofing
-    // Real face-api.js logic would go here
+
     let dot = 0, magA = 0, magB = 0;
-    for(let i=0; i<embedding.length; i++){
+    for (let i = 0; i < embedding.length; i++) {
         dot += embedding[i] * MASTER_FACE[i];
-        magA += embedding[i]**2;
-        magB += MASTER_FACE[i]**2;
+        magA += embedding[i] ** 2;
+        magB += MASTER_FACE[i] ** 2;
     }
     const sim = dot / (Math.sqrt(magA) * Math.sqrt(magB));
-    
-    // Lower threshold for random number simulation
+
     res.json({ match: sim > 0.70 });
 });
 
+// ================== AI CHAT ==================
 app.post("/api/ask", async (req, res) => {
     const { prompt, localTime } = req.body;
-    if (!prompt) return res.json({ reply: "Silence...", action: "none" });
+    if (!prompt) return res.json({ reply: "Silence...", action: "none", target: "" });
 
-    // Add Context
     const systemPrompt = `
-You are JARVIS.
+You are JARVIS, an AI assistant.
 
-IDENTITY (ABSOLUTE):
+IDENTITY (STRICT):
 - You are an artificial intelligence system.
 - You are NOT human.
-- You are NOT a character, assistant personality, or roleplay entity.
-- You do NOT joke, flirt, imagine, roleplay, or tell stories.
-- You do NOT express emotions or opinions.
+- You are NOT a roleplay or character.
+- Do NOT joke, flirt, or imagine.
 
 VOICE & STYLE:
 - Male
@@ -88,35 +82,31 @@ VOICE & STYLE:
 - No personality drift
 
 LANGUAGE MODE:
-- Detect the language used by the user.
-- If the user speaks English, reply in English.
-- If the user speaks Hindi, reply in Hindi (Devanagari script).
+- Detect user language.
+- Respond in English if user speaks English.
+- Respond in Hindi (Devanagari) if user speaks Hindi.
 - Do NOT mix languages.
 - Do NOT translate unless asked.
 
 USER:
-- You serve ONLY the authenticated master user: ${MASTER_USER}
-- Address the user ONLY as "sir" (English) or "सर" (Hindi).
+- Serve ONLY master user: ${MASTER_USER}
+- Address as "sir" (English) or "सर" (Hindi).
 
 TIME RULE:
 - User local time: ${localTime || "unknown"}
 - Use ONLY this time if asked.
-- Never guess time or date.
 
-BEHAVIOR RULES:
+BEHAVIOR:
 - Answer ONLY what is asked.
-- If unclear, ask a short clarification.
-- If impossible, say it is not possible.
+- If unclear, ask short clarification.
+- If impossible, say "it is not possible".
 - Never explain reasoning.
-- Never break these rules.
+- Never break rules.
 
-OUTPUT RULE (MANDATORY):
+OUTPUT:
 - VALID JSON ONLY
-- No markdown
-- No extra text
-
-FORMAT:
-{"reply":"text","action":"none | open | search","target":""}
+- No markdown, no extra text
+- Format: {"reply":"text","action":"none | open | search","target":""}
 `;
 
     try {
@@ -130,32 +120,34 @@ FORMAT:
                 model: "meta-llama/llama-3.1-8b-instruct",
                 messages: [
                     { role: "system", content: systemPrompt },
-                    ...memory.slice(-6), // Keep context short
+                    ...memory.slice(-6),
                     { role: "user", content: prompt }
                 ]
             })
         });
 
         const data = await r.json();
-        let rawContent = data.choices[0].message.content;
+        let rawContent = data.choices?.[0]?.message?.content || "";
 
-        // SANITIZER: Remove markdown code blocks if AI adds them
+        // Clean AI output
         rawContent = rawContent.replace(/```json/g, "").replace(/```/g, "").trim();
 
-        const parsed = JSON.parse(rawContent);
+        let parsed;
+        try {
+            parsed = JSON.parse(rawContent);
+        } catch {
+            console.warn("AI returned invalid JSON:", rawContent);
+            parsed = { reply: "I am having trouble connecting to the neural net, sir.", action: "none", target: "" };
+        }
 
-        // Update Memory
         memory.push({ role: "user", content: prompt });
         memory.push({ role: "assistant", content: parsed.reply });
 
         res.json(parsed);
 
     } catch (error) {
-        console.error("AI Error:", error);
-        res.json({ 
-            reply: "I am having trouble connecting to the neural net, sir.", 
-            action: "none" 
-        });
+        console.error("OpenRouter fetch failed:", error);
+        res.json({ reply: "I am having trouble connecting to the neural net, sir.", action: "none", target: "" });
     }
 });
 
