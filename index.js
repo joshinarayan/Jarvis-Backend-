@@ -12,8 +12,8 @@ app.use(express.json());
 
 // ================== AUTH CONFIG ==================
 const MASTER_USER = "Dream";
-// Hash for "2024726171"
-const MASTER_PASS_HASH = "b4f9104b2b3512253018241d75c57d3257da486e9e491c49747953b648c68b75";
+const MASTER_PASS_HASH =
+"9b41f3fdc2e8f3cdbacb2f7bb7b3f9a03f08b99e7a1d9a1e0c8d0b9b8c8c61f0";
 
 let MASTER_FACE = null;
 let memory = [];
