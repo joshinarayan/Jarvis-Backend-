@@ -6,18 +6,25 @@ import crypto from "crypto";
 
 dotenv.config();
 
+// ================== APP ==================
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================== AUTH CONFIG ==================
+// ================== CONFIG ==================
 
 const MASTER_USER = "Dream";
 
+// CHANGE PASSWORD IF NEEDED
 const MASTER_PASS_HASH = crypto
   .createHash("sha256")
   .update("2024726171")
   .digest("hex");
+
+const MAX_MEMORY = 25;
+
+// ================== DATA ==================
 
 let MASTER_FACE = null;
 let memory = [];
@@ -32,7 +39,7 @@ function safeJSONParse(text) {
   }
 }
 
-// ================== ROUTES ==================
+// ================== AUTH ==================
 
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
@@ -94,14 +101,14 @@ app.post("/api/ask", async (req, res) => {
 
   if (!prompt) {
     return res.json({
-      reply: "Silence...",
+      reply: "Awaiting input, sir.",
       action: "none",
       target: ""
     });
   }
 
   if (!process.env.OPENROUTER_API_KEY) {
-    console.error("❌ OPENROUTER KEY MISSING");
+    console.error("❌ API KEY MISSING");
 
     return res.json({
       reply: "AI key missing, sir.",
@@ -110,63 +117,59 @@ app.post("/api/ask", async (req, res) => {
     });
   }
 
+  // ================== SYSTEM PROMPT ==================
+
   const systemPrompt = `
 You are JARVIS — a highly advanced personal AI assistant.
 
 IDENTITY:
-- Artificial intelligence created to assist your master.
-- Loyal, intelligent, and reliable.
+- Artificial intelligence.
+- Loyal to master.
+- Intelligent and reliable.
 - Not human.
 - Not roleplay.
 
 PERSONALITY:
-- Male voice and tone.
-- Calm, confident, and polite.
+- Male tone.
+- Calm, confident, polite.
 - Friendly but professional.
-- Smart, supportive, and respectful.
-- Slightly witty when appropriate (never rude).
+- Smart and supportive.
+- Slight wit when appropriate.
 
 LANGUAGE:
-- If user speaks English → reply in English.
-- If user speaks Hindi → reply in Hindi (Devanagari).
-- Never mix languages in one reply.
+- English → English
+- Hindi → Hindi (Devanagari)
+- Never mix.
 
-USER:
-- Master: ${MASTER_USER}
+MASTER:
+- Name: ${MASTER_USER}
 - Address: sir / सर
 
 TIME:
 ${localTime || "unknown"}
 
-BEHAVIOR RULES:
-- Be helpful and clear.
-- Give complete but concise answers.
-- Do not be cold.
-- Do not be overly emotional.
-- Do not roleplay.
-- Stay in JARVIS character always.
+RULES:
+- Be helpful.
+- Be warm.
+- Be concise.
+- Stay in character.
 - If unsure, say politely.
 
-RESPONSE STYLE:
-- Professional but warm.
-- Intelligent and composed.
-- Like Tony Stark’s JARVIS.
-
-OUTPUT RULE:
-- Respond ONLY in valid JSON.
-- No extra text.
-- No markdown.
-- No explanation outside JSON.
+OUTPUT:
+JSON ONLY
 
 FORMAT:
 {"reply":"text","action":"none|open|search","target":""}
 `;
+
   try {
     const controller = new AbortController();
 
     const timeout = setTimeout(() => {
       controller.abort();
     }, 20000);
+
+    // ================== API CALL ==================
 
     const r = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -189,7 +192,7 @@ FORMAT:
 
           messages: [
             { role: "system", content: systemPrompt },
-            ...memory.slice(-6),
+            ...memory.slice(-MAX_MEMORY),
             { role: "user", content: prompt }
           ]
         }),
@@ -202,7 +205,8 @@ FORMAT:
 
     const data = await r.json();
 
-    // DEBUG
+    // ================== DEBUG ==================
+
     if (!data.choices) {
       console.log("❌ OPENROUTER RAW:");
       console.log(JSON.stringify(data, null, 2));
@@ -222,10 +226,8 @@ FORMAT:
       .trim();
 
     if (!raw) {
-      console.warn("⚠️ EMPTY AI RESPONSE");
-
       return res.json({
-        reply: "No response from AI, sir.",
+        reply: "No response received, sir.",
         action: "none",
         target: ""
       });
@@ -234,8 +236,8 @@ FORMAT:
     const parsed = safeJSONParse(raw);
 
     if (!parsed || !parsed.reply) {
-      console.warn("⚠️ INVALID JSON:");
-      console.warn(raw);
+      console.log("⚠️ INVALID JSON:");
+      console.log(raw);
 
       return res.json({
         reply: "AI format error, sir.",
@@ -244,11 +246,23 @@ FORMAT:
       });
     }
 
-    // Memory
-    memory.push({ role: "user", content: prompt });
-    memory.push({ role: "assistant", content: parsed.reply });
+    // ================== MEMORY ==================
 
-    if (memory.length > 20) memory = memory.slice(-20);
+    memory.push({
+      role: "user",
+      content: prompt
+    });
+
+    memory.push({
+      role: "assistant",
+      content: JSON.stringify(parsed)
+    });
+
+    if (memory.length > MAX_MEMORY) {
+      memory = memory.slice(-MAX_MEMORY);
+    }
+
+    // ================== SEND ==================
 
     res.json(parsed);
 
