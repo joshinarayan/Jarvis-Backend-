@@ -6,13 +6,13 @@ import crypto from "crypto";
 
 dotenv.config();
 
-// ================== APP ==================
+/* ================== APP ================== */
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ================== CONFIG ==================
+/* ================== CONFIG ================== */
 
 const MASTER_USER = "Dream";
 
@@ -22,14 +22,15 @@ const MASTER_PASS_HASH = crypto
   .update("2024726171")
   .digest("hex");
 
-const MAX_MEMORY = 25;
+// Number of conversation turns (user+ai = 2 messages)
+const MAX_TURNS = 15; // = 30 messages
 
-// ================== DATA ==================
+/* ================== DATA ================== */
 
 let MASTER_FACE = null;
 let memory = [];
 
-// ================== UTILS ==================
+/* ================== UTILS ================== */
 
 function safeJSONParse(text) {
   try {
@@ -39,7 +40,17 @@ function safeJSONParse(text) {
   }
 }
 
-// ================== AUTH ==================
+function tryFixJSON(text) {
+  try {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+  } catch {}
+  return null;
+}
+
+/* ================== AUTH ================== */
 
 app.post("/api/login", (req, res) => {
   const { username, password } = req.body;
@@ -59,7 +70,7 @@ app.post("/api/login", (req, res) => {
   return res.status(403).json({ ok: false });
 });
 
-// ================== FACE ==================
+/* ================== FACE ================== */
 
 app.post("/api/face/enroll", (req, res) => {
   const { embedding } = req.body;
@@ -94,7 +105,7 @@ app.post("/api/face/verify", (req, res) => {
   res.json({ match: sim > 0.7 });
 });
 
-// ================== AI ==================
+/* ================== AI ================== */
 
 app.post("/api/ask", async (req, res) => {
   const { prompt, localTime } = req.body;
@@ -108,7 +119,7 @@ app.post("/api/ask", async (req, res) => {
   }
 
   if (!process.env.OPENROUTER_API_KEY) {
-    console.error("❌ API KEY MISSING");
+    console.error("❌ OPENROUTER KEY MISSING");
 
     return res.json({
       reply: "AI key missing, sir.",
@@ -117,10 +128,10 @@ app.post("/api/ask", async (req, res) => {
     });
   }
 
-  // ================== SYSTEM PROMPT ==================
+  /* ================== SYSTEM PROMPT ================== */
 
   const systemPrompt = `
-You are JARVIS — a highly advanced personal AI assistant.
+You are JARVIS — an advanced personal AI assistant.
 
 IDENTITY:
 - Artificial intelligence.
@@ -131,10 +142,11 @@ IDENTITY:
 
 PERSONALITY:
 - Male tone.
-- Calm, confident, polite.
-- Friendly but professional.
-- Smart and supportive.
+- Calm and confident.
+- Polite and friendly.
+- Professional but warm.
 - Slight wit when appropriate.
+- Remembers past context.
 
 LANGUAGE:
 - English → English
@@ -150,13 +162,13 @@ ${localTime || "unknown"}
 
 RULES:
 - Be helpful.
-- Be warm.
+- Be clear.
 - Be concise.
 - Stay in character.
 - If unsure, say politely.
 
 OUTPUT:
-JSON ONLY
+Return ONLY valid JSON.
 
 FORMAT:
 {"reply":"text","action":"none|open|search","target":""}
@@ -169,7 +181,7 @@ FORMAT:
       controller.abort();
     }, 20000);
 
-    // ================== API CALL ==================
+    /* ================== API CALL ================== */
 
     const r = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -192,7 +204,7 @@ FORMAT:
 
           messages: [
             { role: "system", content: systemPrompt },
-            ...memory.slice(-MAX_MEMORY),
+            ...memory.slice(-MAX_TURNS * 2),
             { role: "user", content: prompt }
           ]
         }),
@@ -205,7 +217,7 @@ FORMAT:
 
     const data = await r.json();
 
-    // ================== DEBUG ==================
+    /* ================== DEBUG ================== */
 
     if (!data.choices) {
       console.log("❌ OPENROUTER RAW:");
@@ -233,7 +245,13 @@ FORMAT:
       });
     }
 
-    const parsed = safeJSONParse(raw);
+    /* ================== PARSE ================== */
+
+    let parsed = safeJSONParse(raw);
+
+    if (!parsed) {
+      parsed = tryFixJSON(raw);
+    }
 
     if (!parsed || !parsed.reply) {
       console.log("⚠️ INVALID JSON:");
@@ -246,7 +264,7 @@ FORMAT:
       });
     }
 
-    // ================== MEMORY ==================
+    /* ================== MEMORY ================== */
 
     memory.push({
       role: "user",
@@ -255,14 +273,14 @@ FORMAT:
 
     memory.push({
       role: "assistant",
-      content: JSON.stringify(parsed)
+      content: parsed.reply
     });
 
-    if (memory.length > MAX_MEMORY) {
-      memory = memory.slice(-MAX_MEMORY);
+    if (memory.length > MAX_TURNS * 2) {
+      memory = memory.slice(-MAX_TURNS * 2);
     }
 
-    // ================== SEND ==================
+    /* ================== SEND ================== */
 
     res.json(parsed);
 
@@ -277,7 +295,7 @@ FORMAT:
   }
 });
 
-// ================== SERVER ==================
+/* ================== SERVER ================== */
 
 const PORT = process.env.PORT || 3000;
 
