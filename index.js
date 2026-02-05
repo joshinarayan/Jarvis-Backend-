@@ -16,14 +16,12 @@ app.use(express.json());
 
 const MASTER_USER = "Dream";
 
-// CHANGE PASSWORD IF NEEDED
 const MASTER_PASS_HASH = crypto
   .createHash("sha256")
   .update("2024726171")
   .digest("hex");
 
-// Number of conversation turns (user+ai = 2 messages)
-const MAX_TURNS = 15; // = 30 messages
+const MAX_MEMORY = 25;
 
 /* ================== DATA ================== */
 
@@ -38,16 +36,6 @@ function safeJSONParse(text) {
   } catch {
     return null;
   }
-}
-
-function tryFixJSON(text) {
-  try {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) {
-      return JSON.parse(match[0]);
-    }
-  } catch {}
-  return null;
 }
 
 /* ================== AUTH ================== */
@@ -119,8 +107,6 @@ app.post("/api/ask", async (req, res) => {
   }
 
   if (!process.env.OPENROUTER_API_KEY) {
-    console.error("❌ OPENROUTER KEY MISSING");
-
     return res.json({
       reply: "AI key missing, sir.",
       action: "none",
@@ -131,27 +117,22 @@ app.post("/api/ask", async (req, res) => {
   /* ================== SYSTEM PROMPT ================== */
 
   const systemPrompt = `
-You are JARVIS — an advanced personal AI assistant.
+You are JARVIS — a highly advanced personal AI assistant.
 
 IDENTITY:
 - Artificial intelligence.
 - Loyal to master.
 - Intelligent and reliable.
-- Not human.
-- Not roleplay.
 
 PERSONALITY:
-- Male tone.
-- Calm and confident.
-- Polite and friendly.
-- Professional but warm.
-- Slight wit when appropriate.
-- Remembers past context.
+- Calm
+- Professional
+- Supportive
+- Warm
 
 LANGUAGE:
 - English → English
 - Hindi → Hindi (Devanagari)
-- Never mix.
 
 MASTER:
 - Name: ${MASTER_USER}
@@ -161,14 +142,12 @@ TIME:
 ${localTime || "unknown"}
 
 RULES:
-- Be helpful.
-- Be clear.
-- Be concise.
-- Stay in character.
-- If unsure, say politely.
+- Be helpful
+- Be concise
+- Stay in character
 
 OUTPUT:
-Return ONLY valid JSON.
+JSON ONLY
 
 FORMAT:
 {"reply":"text","action":"none|open|search","target":""}
@@ -181,7 +160,7 @@ FORMAT:
       controller.abort();
     }, 20000);
 
-    /* ================== API CALL ================== */
+    /* ================== OPENROUTER ================== */
 
     const r = await fetch(
       "https://openrouter.ai/api/v1/chat/completions",
@@ -204,7 +183,7 @@ FORMAT:
 
           messages: [
             { role: "system", content: systemPrompt },
-            ...memory.slice(-MAX_TURNS * 2),
+            ...memory.slice(-MAX_MEMORY),
             { role: "user", content: prompt }
           ]
         }),
@@ -217,11 +196,8 @@ FORMAT:
 
     const data = await r.json();
 
-    /* ================== DEBUG ================== */
-
     if (!data.choices) {
-      console.log("❌ OPENROUTER RAW:");
-      console.log(JSON.stringify(data, null, 2));
+      console.log("❌ RAW:", data);
 
       return res.json({
         reply: "AI offline, sir.",
@@ -237,28 +213,13 @@ FORMAT:
       .replace(/```/g, "")
       .trim();
 
-    if (!raw) {
-      return res.json({
-        reply: "No response received, sir.",
-        action: "none",
-        target: ""
-      });
-    }
-
-    /* ================== PARSE ================== */
-
-    let parsed = safeJSONParse(raw);
-
-    if (!parsed) {
-      parsed = tryFixJSON(raw);
-    }
+    const parsed = safeJSONParse(raw);
 
     if (!parsed || !parsed.reply) {
-      console.log("⚠️ INVALID JSON:");
-      console.log(raw);
+      console.log("⚠️ BAD JSON:", raw);
 
       return res.json({
-        reply: "AI format error, sir.",
+        reply: "Response format error, sir.",
         action: "none",
         target: ""
       });
@@ -276,8 +237,8 @@ FORMAT:
       content: parsed.reply
     });
 
-    if (memory.length > MAX_TURNS * 2) {
-      memory = memory.slice(-MAX_TURNS * 2);
+    if (memory.length > MAX_MEMORY) {
+      memory = memory.slice(-MAX_MEMORY);
     }
 
     /* ================== SEND ================== */
@@ -285,10 +246,10 @@ FORMAT:
     res.json(parsed);
 
   } catch (err) {
-    console.error("🔥 AI ERROR:", err.message);
+    console.error("🔥 ERROR:", err.message);
 
     res.json({
-      reply: "Neural network error, sir.",
+      reply: "Neural network failure, sir.",
       action: "none",
       target: ""
     });
